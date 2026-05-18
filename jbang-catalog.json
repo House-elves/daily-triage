@@ -1,0 +1,9 @@
+{
+  "catalogs": {},
+  "aliases": {
+    "daily-triage": {
+      "script-ref": "DailyTriage.java",
+      "description": "Daily email triage and morning briefing using Claude Code"
+    }
+  }
+}
