@@ -26,6 +26,7 @@ public class Config {
     private Map<String, String> raw;
 
     record GmailAccount(String email, String password) {}
+    record ZulipServer(String url, String email, String apiKey) {}
 
     static Config load() {
         if (!Files.exists(CONFIG_PATH)) {
@@ -104,6 +105,35 @@ public class Config {
             i++;
         }
         return urls;
+    }
+
+    List<ZulipServer> getZulipServers() {
+        List<ZulipServer> servers = new ArrayList<>();
+        int i = 1;
+        while (true) {
+            String urlKey = "ZULIP_SERVER_" + i;
+            if (!raw.containsKey(urlKey)) break;
+            String url = raw.get(urlKey);
+            String email = raw.getOrDefault("ZULIP_EMAIL_" + i, "");
+            String apiKey = raw.getOrDefault("ZULIP_API_KEY_" + i, "");
+            if (!url.isEmpty() && !email.isEmpty() && !apiKey.isEmpty()) {
+                servers.add(new ZulipServer(url, email, apiKey));
+            }
+            i++;
+        }
+        return servers;
+    }
+
+    List<String> getZulipWatchTopics() {
+        List<String> watches = new ArrayList<>();
+        int i = 1;
+        while (true) {
+            String key = "ZULIP_WATCH_" + i;
+            if (!raw.containsKey(key)) break;
+            watches.add(raw.get(key));
+            i++;
+        }
+        return watches;
     }
 
     private static Set<String> parseSet(String csv) {

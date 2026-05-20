@@ -90,6 +90,45 @@ while true; do
     ical_urls+="ICAL_URL_${ical_num}=${ical_url}\n"
 done
 
+# Zulip servers
+echo
+echo "--- Zulip Chat (optional) ---"
+echo "  Monitors unread mentions and watched streams in your Zulip instance."
+echo "  To get your API key: log in to your Zulip server, go to"
+echo "  Settings > Account & privacy > API key, and click 'Get API key'."
+echo
+
+zulip_servers=""
+zulip_watches=""
+zulip_num=0
+while true; do
+    zulip_num=$((zulip_num + 1))
+    read -rp "Zulip server URL #${zulip_num} (e.g. quarkusio.zulipchat.com, leave empty to stop): " zulip_url
+    if [[ -z "$zulip_url" ]]; then
+        break
+    fi
+    read -rp "  Your email on this server: " zulip_email
+    read -srp "  API key: " zulip_key
+    echo
+    zulip_servers+="ZULIP_SERVER_${zulip_num}=${zulip_url}\n"
+    zulip_servers+="ZULIP_EMAIL_${zulip_num}=${zulip_email}\n"
+    zulip_servers+="ZULIP_API_KEY_${zulip_num}=${zulip_key}\n"
+done
+
+if [[ -n "$zulip_servers" ]]; then
+    echo
+    echo "  Watch specific streams/topics for activity (format: stream or stream:topic)"
+    watch_num=0
+    while true; do
+        watch_num=$((watch_num + 1))
+        read -rp "  Watch #${watch_num} (leave empty to stop): " watch
+        if [[ -z "$watch" ]]; then
+            break
+        fi
+        zulip_watches+="ZULIP_WATCH_${watch_num}=${watch}\n"
+    done
+fi
+
 read -rp "Max emails to fetch per account [50]: " max_emails
 max_emails="${max_emails:-50}"
 
@@ -124,6 +163,16 @@ fi
 # Append iCal URLs
 if [[ -n "$ical_urls" ]]; then
     echo -e "$ical_urls" >> "$CONFIG_FILE"
+fi
+
+# Append Zulip servers
+if [[ -n "$zulip_servers" ]]; then
+    echo -e "$zulip_servers" >> "$CONFIG_FILE"
+fi
+
+# Append Zulip watches
+if [[ -n "$zulip_watches" ]]; then
+    echo -e "$zulip_watches" >> "$CONFIG_FILE"
 fi
 
 chmod 600 "$CONFIG_FILE"

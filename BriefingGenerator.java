@@ -11,7 +11,8 @@ public class BriefingGenerator {
 
     static String generate(Config config, List<CalendarFeed.CalendarEvent> calendarEvents,
                             List<GitHubIssues.IssueInfo> githubIssues,
-                            List<AttentionEmail> attentionEmails) {
+                            List<AttentionEmail> attentionEmails,
+                            List<ZulipChat.ZulipMessage> zulipMessages) {
 
         String displayName = config.displayName;
         String todayStr = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM dd, yyyy"));
@@ -59,6 +60,35 @@ public class BriefingGenerator {
         } else {
             sections.append("  No open issues assigned to you.\n");
         }
+        sections.append("\n");
+
+        // Zulip
+        sections.append("=== ZULIP MESSAGES ===\n");
+        if (zulipMessages != null && !zulipMessages.isEmpty()) {
+            List<ZulipChat.ZulipMessage> mentions = zulipMessages.stream()
+                    .filter(ZulipChat.ZulipMessage::isMention).toList();
+            List<ZulipChat.ZulipMessage> watched = zulipMessages.stream()
+                    .filter(m -> !m.isMention()).toList();
+
+            if (!mentions.isEmpty()) {
+                sections.append("  -- You were mentioned in --\n");
+                for (ZulipChat.ZulipMessage m : mentions) {
+                    sections.append("  [").append(m.stream()).append(" > ").append(m.topic()).append("] ");
+                    sections.append(m.sender()).append(": ").append(m.content()).append("\n");
+                    sections.append("    ").append(m.url()).append("\n");
+                }
+            }
+            if (!watched.isEmpty()) {
+                sections.append("  -- Activity in watched topics --\n");
+                for (ZulipChat.ZulipMessage m : watched) {
+                    sections.append("  [").append(m.stream()).append(" > ").append(m.topic()).append("] ");
+                    sections.append(m.sender()).append(": ").append(m.content()).append("\n");
+                    sections.append("    ").append(m.url()).append("\n");
+                }
+            }
+        } else {
+            sections.append("  No unread Zulip messages to review.\n");
+        }
 
         String data = sections.toString();
 
@@ -66,9 +96,11 @@ public class BriefingGenerator {
                 + "Requirements:\n"
                 + "- Clean, modern design with inline CSS (no external stylesheets)\n"
                 + "- Use a warm, professional greeting with the display name\n"
-                + "- Organize into clear sections: Calendar, Emails, GitHub Issues\n"
+                + "- Organize into clear sections: Calendar, Emails, GitHub Issues, Zulip\n"
                 + "- Use a color scheme that looks good in both light and dark email clients\n"
-                + "- Make GitHub issue URLs clickable links\n"
+                + "- Make GitHub issue URLs and Zulip message URLs clickable links\n"
+                + "- For the Zulip section, separate mentions (higher priority) from watched topics\n"
+                + "- Summarize Zulip discussions briefly — group by topic and give a 1-2 sentence digest of each conversation rather than listing every message verbatim\n"
                 + "- Keep it scannable — the reader should get the full picture in under 30 seconds\n"
                 + "- Do NOT include any preamble or explanation, output ONLY the HTML (starting with <!DOCTYPE html>)\n\n"
                 + "Data:\n" + data;

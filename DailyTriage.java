@@ -6,6 +6,7 @@
 //SOURCES EmailTriage.java
 //SOURCES CalendarFeed.java
 //SOURCES GitHubIssues.java
+//SOURCES ZulipChat.java
 //SOURCES BriefingGenerator.java
 //SOURCES Notifier.java
 
@@ -103,8 +104,12 @@ public class DailyTriage implements Callable<Integer> {
             List<GitHubIssues.IssueInfo> githubIssues = GitHubIssues.fetch(config);
             System.out.println("  Found " + githubIssues.size() + " open issues.");
 
+            System.out.println("  Fetching Zulip messages...");
+            List<ZulipChat.ZulipMessage> zulipMessages = ZulipChat.fetch(config);
+            System.out.println("  Found " + zulipMessages.size() + " unread Zulip messages.");
+
             System.out.println("  Generating briefing...");
-            String html = BriefingGenerator.generate(config, calendarEvents, githubIssues, attentionEmails);
+            String html = BriefingGenerator.generate(config, calendarEvents, githubIssues, attentionEmails, zulipMessages);
 
             if (html != null && !dryRun) {
                 Notifier notifier = new Notifier(config);

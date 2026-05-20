@@ -6,7 +6,7 @@ Runs in two phases every morning:
 
 **Phase 1 — Email triage:** Connects to your Gmail accounts via IMAP, fetches unread emails, deduplicates by thread, and uses Claude to classify each as actionable or noise. Noise gets marked as read and labeled. A plain-text triage summary is emailed to you.
 
-**Phase 2 — Morning briefing:** Collects today's calendar events (from Google Calendar iCal feeds), your open GitHub issues, and the emails that survived triage. Claude generates a polished HTML briefing email so you can scan your day in under 30 seconds.
+**Phase 2 — Morning briefing:** Collects today's calendar events (from Google Calendar iCal feeds), your open GitHub issues, unread Zulip messages (mentions and watched streams), and the emails that survived triage. Claude generates a polished HTML briefing email — including a short summary of Zulip discussions — so you can scan your day in under 30 seconds.
 
 ## Prerequisites
 
@@ -37,7 +37,7 @@ cd daily-triage
 The installer will:
 
 1. Check prerequisites (java, jbang, gh, claude)
-2. Prompt for configuration (Gmail accounts, calendar feeds, GitHub user, schedule)
+2. Prompt for configuration (Gmail accounts, calendar feeds, Zulip servers, GitHub user, schedule)
 3. Write config to `~/.config/daily-triage/config` (chmod 600)
 4. Install to `~/.local/bin/daily-triage`
 5. Set up a scheduler:
@@ -79,6 +79,23 @@ Stored in `~/.config/daily-triage/config`:
 | `GMAIL_ACCOUNT_N` | Additional Gmail address (N=2,3,...) | -- |
 | `GMAIL_PASSWORD_N` | Additional Gmail App Password | -- |
 | `ICAL_URL_N` | Google Calendar iCal feed URL (N=1,2,...) | -- |
+| `ZULIP_SERVER_N` | Zulip server hostname (N=1,2,...) | -- |
+| `ZULIP_EMAIL_N` | Your email on the Zulip server | -- |
+| `ZULIP_API_KEY_N` | Zulip API key (Settings > Account & privacy > API key) | -- |
+| `ZULIP_WATCH_N` | Stream or stream:topic to watch (N=1,2,...) | -- |
+
+## Zulip integration
+
+Optionally monitors your Zulip instance for unread messages. Two types of messages are surfaced in the briefing:
+
+- **Mentions** — any unread message where you are @-mentioned, across all streams
+- **Watched streams** — unread activity in streams (or specific topics) you configure with `ZULIP_WATCH_N`
+
+Watch entries use the format `stream` (all topics) or `stream:topic` (specific topic). Messages that are both a mention and in a watched stream appear once, flagged as a mention.
+
+The briefing summarizes Zulip discussions by topic so you get the gist without reading every message.
+
+To get your API key: log in to your Zulip server, go to Settings > Account & privacy > API key, and click "Get API key".
 
 ## What gets marked as read
 
