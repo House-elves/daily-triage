@@ -18,12 +18,15 @@ public class ZulipChat {
     record ZulipMessage(String server, String stream, String topic, String sender,
                         String content, String url, boolean isMention) {}
 
-    static List<ZulipMessage> fetch(Config config) {
+    record FetchResult(List<ZulipMessage> messages, Map<Config.ZulipServer, List<Long>> watchMessageIds) {}
+
+    static FetchResult fetch(Config config) {
         List<Config.ZulipServer> servers = config.getZulipServers();
-        if (servers.isEmpty()) return List.of();
+        if (servers.isEmpty()) return new FetchResult(List.of(), Map.of());
 
         List<String> watches = config.getZulipWatchTopics();
         List<ZulipMessage> allMessages = new ArrayList<>();
+        Map<Config.ZulipServer, List<Long>> watchMessageIds = new LinkedHashMap<>();
 
         for (Config.ZulipServer server : servers) {
             try {
@@ -38,23 +41,70 @@ public class ZulipChat {
                     mentionIds.add(extractMessageId(m.url()));
                 }
 
+                List<Long> serverWatchIds = new ArrayList<>();
                 for (String watch : watches) {
                     String narrow = buildWatchNarrow(watch);
                     if (narrow == null) continue;
 
                     List<ZulipMessage> watchMessages = fetchMessages(server, narrow);
                     for (ZulipMessage m : watchMessages) {
-                        if (!mentionIds.contains(extractMessageId(m.url()))) {
+                        long id = extractMessageId(m.url());
+                        if (!mentionIds.contains(id)) {
                             allMessages.add(m);
+                            serverWatchIds.add(id);
                         }
                     }
+                }
+                if (!serverWatchIds.isEmpty()) {
+                    watchMessageIds.put(server, serverWatchIds);
                 }
             } catch (Exception e) {
                 System.err.println("  Error fetching Zulip messages from " + server.url() + ": " + e.getMessage());
             }
         }
 
-        return allMessages;
+        return new FetchResult(allMessages, watchMessageIds);
+    }
+
+    static void markAsRead(Map<Config.ZulipServer, List<Long>> watchMessageIds) {
+        for (var entry : watchMessageIds.entrySet()) {
+            Config.ZulipServer server = entry.getKey();
+            List<Long> ids = entry.getValue();
+            if (ids.isEmpty()) continue;
+
+            try (HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build()) {
+
+                String baseUrl = server.url().startsWith("https://") ? server.url() : "https://" + server.url();
+                baseUrl = baseUrl.replaceAll("/+$", "");
+
+                String auth = Base64.getEncoder().encodeToString(
+                        (server.email() + ":" + server.apiKey()).getBytes(StandardCharsets.UTF_8));
+
+                String body = "messages=" + URLEncoder.encode(MAPPER.writeValueAsString(ids), StandardCharsets.UTF_8)
+                        + "&op=add&flag=read";
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl + "/api/v1/messages/flags"))
+                        .header("Authorization", "Basic " + auth)
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .timeout(Duration.ofSeconds(30))
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    System.out.println("  Marked " + ids.size() + " watched Zulip messages as read on " + server.url());
+                } else {
+                    System.err.println("  Failed to mark Zulip messages as read on " + server.url()
+                            + ": HTTP " + response.statusCode());
+                }
+            } catch (Exception e) {
+                System.err.println("  Error marking Zulip messages as read on " + server.url()
+                        + ": " + e.getMessage());
+            }
+        }
     }
 
     private static List<ZulipMessage> fetchMessages(Config.ZulipServer server, String narrow) {
