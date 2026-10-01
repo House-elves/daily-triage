@@ -124,6 +124,20 @@ public class Config {
         return servers;
     }
 
+    /** Whether "*" watch messages the briefing covered are marked read (unless they involve you). */
+    boolean zulipMarkAllRead() {
+        return Boolean.parseBoolean(raw.getOrDefault("ZULIP_MARK_ALL_READ", "false"));
+    }
+
+    /** Subjects that keep a "*" message unread: matched against stream, topic and content. */
+    List<String> zulipKeepUnreadKeywords() {
+        List<String> out = new ArrayList<>();
+        for (String k : raw.getOrDefault("ZULIP_KEEP_UNREAD", "").split(",")) {
+            if (!k.isBlank()) out.add(k.strip());
+        }
+        return out;
+    }
+
     List<String> getZulipWatchTopics() {
         List<String> watches = new ArrayList<>();
         int i = 1;

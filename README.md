@@ -85,6 +85,8 @@ Stored in `~/.config/daily-triage/config`:
 | `ZULIP_EMAIL_N` | Your email on the Zulip server | -- |
 | `ZULIP_API_KEY_N` | Zulip API key (Settings > Account & privacy > API key) | -- |
 | `ZULIP_WATCH_N` | Stream or stream:topic to watch (N=1,2,...), or `*` for all unread messages | -- |
+| `ZULIP_MARK_ALL_READ` | After the briefing, also mark `*` messages read, except the ones that involve you: DMs, mentions, topics you follow, starred or alert-word messages, and `ZULIP_KEEP_UNREAD` subjects | `false` |
+| `ZULIP_KEEP_UNREAD` | Comma-separated subjects that keep a `*` message unread, matched in stream, topic and content, ignoring case, spaces, `-` and `_` (e.g. `Dev UI,GraphQL,OpenAPI`) | -- |
 
 ## Zulip integration
 
