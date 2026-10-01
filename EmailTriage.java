@@ -148,6 +148,27 @@ public class EmailTriage {
         return extras;
     }
 
+    // ── Threads owned by other elves ──
+
+    /**
+     * GitHub notifications for Dependabot's mvnpm bumps on Quarkus, e.g.
+     * "Re: [quarkusio/quarkus] Bump org.mvnpm:marked from 17.0.5 to 18.0.14 (PR #57022)".
+     * The mvnpm-dependabot elf validates every one of those PRs, comments on it,
+     * and emails its own summary, so these notifications - quarkus-bot's
+     * "/cc @phillip-kruger (mvnpm)" included - are already handled. Claude would
+     * keep them unread, since a /cc is a direct mention.
+     */
+    private static final Pattern MVNPM_DEPENDABOT = Pattern.compile(
+            "\\[quarkusio/quarkus] Bump org\\.mvnpm[\\w.-]*:");
+
+    static String handledByElf(EmailInfo em) {
+        if (em.from().contains("notifications@github.com")
+                && MVNPM_DEPENDABOT.matcher(em.subject()).find()) {
+            return "handled by the mvnpm-dependabot elf";
+        }
+        return null;
+    }
+
     // ── Classification via Claude ──
 
     static Map<Integer, Decision> classifyBatch(List<EmailInfo> emails, String accountEmail) {
@@ -313,9 +334,24 @@ public class EmailTriage {
         List<EmailInfo> emails = deduplicateThreads(allEmails);
         Map<String, List<String>> threadExtraUids = collectThreadExtraUids(allEmails, emails);
 
+        // Threads another elf already owns are settled here, without asking Claude.
+        Map<Integer, Decision> decisions = new HashMap<>();
+        List<EmailInfo> toClassify = new ArrayList<>();
+        List<Integer> classifyIndex = new ArrayList<>();
+        for (int i = 0; i < emails.size(); i++) {
+            String handledBy = handledByElf(emails.get(i));
+            if (handledBy != null) {
+                decisions.put(i + 1, new Decision("MARK_READ", handledBy));
+            } else {
+                toClassify.add(emails.get(i));
+                classifyIndex.add(i + 1);
+            }
+        }
+
         System.out.println("  Found " + allEmails.size() + " unread emails ("
-                + emails.size() + " threads), classifying...");
-        Map<Integer, Decision> decisions = classifyEmails(emails, accountEmail);
+                + emails.size() + " threads, " + decisions.size() + " handled by elves), classifying...");
+        Map<Integer, Decision> classified = classifyEmails(toClassify, accountEmail);
+        classified.forEach((idx, d) -> decisions.put(classifyIndex.get(idx - 1), d));
 
         List<TriageResult> accountResults = new ArrayList<>();
         List<String> markReadUids = new ArrayList<>();

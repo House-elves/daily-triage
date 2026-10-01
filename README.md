@@ -6,6 +6,8 @@ Runs in two phases every morning:
 
 **Phase 1 — Email triage:** Connects to your Gmail accounts via IMAP, fetches unread emails, deduplicates by thread, and uses Claude to classify each as actionable or noise. Noise gets marked as read and labeled. A plain-text triage summary is emailed to you.
 
+Threads another elf already owns skip Claude and are marked read directly. Today that means GitHub notifications for Dependabot's `org.mvnpm` bumps on `quarkusio/quarkus`, since [mvnpm-dependabot](https://github.com/House-elves/mvnpm-dependabot) validates and comments on every one of those PRs and emails its own summary.
+
 **Phase 2 — Morning briefing:** Collects today's calendar events (from Google Calendar iCal feeds), your open GitHub issues, unread Zulip messages (mentions and watched streams), and the emails that survived triage. Claude generates a polished HTML briefing email — including a short summary of Zulip discussions — so you can scan your day in under 30 seconds.
 
 ## Prerequisites
