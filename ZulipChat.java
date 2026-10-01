@@ -14,6 +14,8 @@ public class ZulipChat {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MAX_MESSAGES = 100;
+    /** Watch value meaning every unread message, not one stream. */
+    static final String ALL_UNREAD = "*";
 
     record ZulipMessage(String server, String stream, String topic, String sender,
                         String content, String url, boolean isMention) {}
@@ -42,16 +44,21 @@ public class ZulipChat {
                 }
 
                 List<Long> serverWatchIds = new ArrayList<>();
+                Set<Long> included = new HashSet<>(mentionIds);
                 for (String watch : watches) {
-                    String narrow = buildWatchNarrow(watch);
+                    // "*" summarises ALL unread messages. Those are only read in the
+                    // briefing, so they stay unread in Zulip; a named watch is
+                    // marked read, because the briefing covers it.
+                    boolean all = watch.strip().equals(ALL_UNREAD);
+                    String narrow = all ? "[{\"operator\":\"is\",\"operand\":\"unread\"}]" : buildWatchNarrow(watch);
                     if (narrow == null) continue;
 
                     List<ZulipMessage> watchMessages = fetchMessages(server, narrow);
                     for (ZulipMessage m : watchMessages) {
                         long id = extractMessageId(m.url());
-                        if (!mentionIds.contains(id)) {
+                        if (included.add(id)) {
                             allMessages.add(m);
-                            serverWatchIds.add(id);
+                            if (!all) serverWatchIds.add(id);
                         }
                     }
                 }

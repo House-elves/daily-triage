@@ -117,7 +117,9 @@ done
 
 if [[ -n "$zulip_servers" ]]; then
     echo
-    echo "  Watch specific streams/topics for activity (format: stream or stream:topic)"
+    echo "  Watch specific streams/topics for activity (format: stream or stream:topic)."
+    echo "  Watched messages are marked read once the briefing is sent."
+    echo "  Use * to summarise ALL unread messages (newest 100) without marking them read."
     watch_num=0
     while true; do
         watch_num=$((watch_num + 1))

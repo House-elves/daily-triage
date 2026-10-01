@@ -84,14 +84,14 @@ Stored in `~/.config/daily-triage/config`:
 | `ZULIP_SERVER_N` | Zulip server hostname (N=1,2,...) | -- |
 | `ZULIP_EMAIL_N` | Your email on the Zulip server | -- |
 | `ZULIP_API_KEY_N` | Zulip API key (Settings > Account & privacy > API key) | -- |
-| `ZULIP_WATCH_N` | Stream or stream:topic to watch (N=1,2,...) | -- |
+| `ZULIP_WATCH_N` | Stream or stream:topic to watch (N=1,2,...), or `*` for all unread messages | -- |
 
 ## Zulip integration
 
 Optionally monitors your Zulip instance for unread messages. Two types of messages are surfaced in the briefing:
 
 - **Mentions** — any unread message where you are @-mentioned, across all streams
-- **Watched streams** — unread activity in streams (or specific topics) you configure with `ZULIP_WATCH_N`
+- **Watched streams** — unread activity in streams (or specific topics) you configure with `ZULIP_WATCH_N`; these are marked read once the briefing is sent. A watch of `*` summarises all your unread messages (newest 100) and leaves them unread
 
 Watch entries use the format `stream` (all topics) or `stream:topic` (specific topic). Messages that are both a mention and in a watched stream appear once, flagged as a mention.
 
