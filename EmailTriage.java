@@ -274,45 +274,79 @@ public class EmailTriage {
 
     // ── Mark emails as read ──
 
+    /** UIDs per IMAP command - keeps each command line well under server limits. */
+    private static final int MARK_CHUNK = 100;
+
+    /**
+     * Marks the UIDs read and labels them, a chunk per command rather than a
+     * message per command. The per-message version made two round trips per
+     * email; on an INBOX of ~200k messages that was ~1s each, and on
+     * 2026-10-02 Gmail dropped the connection a minute in ("Lost folder
+     * connection to server") and nothing was marked. A dropped connection is
+     * retried once on a fresh one; the operation is idempotent.
+     */
     static void markAsRead(Config.GmailAccount account, List<String> uids, String label) {
+        List<Long> all = new ArrayList<>();
+        for (String u : uids) {
+            try {
+                all.add(Long.parseLong(u));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        int marked = 0;
+        for (int i = 0; i < all.size(); i += MARK_CHUNK) {
+            List<Long> chunk = all.subList(i, Math.min(i + MARK_CHUNK, all.size()));
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    markChunk(account, chunk, label);
+                    marked += chunk.size();
+                    break;
+                } catch (Exception e) {
+                    if (attempt >= 2) {
+                        System.err.println("  Error marking " + chunk.size() + " emails as read: " + e);
+                        break;
+                    }
+                    System.err.println("  Marking failed (" + e.getMessage() + "), retrying on a new connection...");
+                }
+            }
+        }
+        System.out.println("  Marked " + marked + " of " + all.size() + " emails as read.");
+    }
+
+    private static void markChunk(Config.GmailAccount account, List<Long> uids, String label) throws Exception {
         Properties props = new Properties();
         props.put("mail.store.protocol", "imaps");
         props.put("mail.imaps.host", "imap.gmail.com");
         props.put("mail.imaps.port", "993");
 
+        Store store = Session.getInstance(props).getStore("imaps");
+        store.connect("imap.gmail.com", account.email(), account.password());
         try {
-            Session session = Session.getInstance(props);
-            Store store = session.getStore("imaps");
-            store.connect("imap.gmail.com", account.email(), account.password());
-
             Folder inbox = store.getFolder("INBOX");
             inbox.open(Folder.READ_WRITE);
-
-            if (inbox instanceof UIDFolder uidFolder) {
-                for (String uidStr : uids) {
+            try {
+                String uidSet = uids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+                var imap = (org.eclipse.angus.mail.imap.IMAPFolder) inbox;
+                imap.doCommand(p -> {
+                    p.simpleCommand("UID STORE " + uidSet + " +FLAGS.SILENT (\\Seen)", null);
+                    return null;
+                });
+                if (label != null && !label.isEmpty()) {
                     try {
-                        long uid = Long.parseLong(uidStr);
-                        Message msg = uidFolder.getMessageByUID(uid);
-                        if (msg != null) {
-                            msg.setFlag(Flags.Flag.SEEN, true);
-                            if (label != null && !label.isEmpty()) {
-                                // Gmail-specific: apply label via X-GM-LABELS
-                                try {
-                                    applyGmailLabel(inbox, uidStr, label);
-                                } catch (Exception labelEx) {
-                                    // Label application is best-effort
-                                }
-                            }
-                        }
-                    } catch (NumberFormatException ignored) {
+                        imap.doCommand(p -> {
+                            p.simpleCommand("UID STORE " + uidSet + " +X-GM-LABELS (\"" + label + "\")", null);
+                            return null;
+                        });
+                    } catch (Exception labelEx) {
+                        // Label application is best-effort; the read flag is what matters.
+                        System.err.println("  Could not apply label '" + label + "': " + labelEx.getMessage());
                     }
                 }
+            } finally {
+                inbox.close(false);
             }
-
-            inbox.close(false);
+        } finally {
             store.close();
-        } catch (Exception e) {
-            System.err.println("  Error marking emails as read: " + e.getMessage());
         }
     }
 
@@ -391,22 +425,6 @@ public class EmailTriage {
     }
 
     // ── Helper methods ──
-
-    private static void applyGmailLabel(Folder inbox, String uidStr, String label) {
-        try {
-            if (inbox instanceof org.eclipse.angus.mail.imap.IMAPFolder imapFolder) {
-                imapFolder.doCommand(p -> {
-                    p.simpleCommand(
-                            "UID STORE " + uidStr + " +X-GM-LABELS (\"" + label + "\")",
-                            null
-                    );
-                    return null;
-                });
-            }
-        } catch (Exception ignored) {
-            // Label application is best-effort
-        }
-    }
 
     private static String decodeHeader(String[] headers) {
         if (headers == null || headers.length == 0) return "";
