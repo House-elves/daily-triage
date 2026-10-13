@@ -17,12 +17,15 @@ public class ZulipChat {
     /** Watch value meaning every unread message, not one stream. */
     static final String ALL_UNREAD = "*";
 
+    /**
+     * @param time   when it was sent, in epoch seconds
+     * @param unread whether it is unread for you
+     */
     record ZulipMessage(String server, String stream, String topic, String sender,
                         String content, String url, boolean isMention,
-                        boolean involvesMe, String fullText) {
-        ZulipMessage(String server, String stream, String topic, String sender,
-                     String content, String url, boolean isMention) {
-            this(server, stream, topic, sender, content, url, isMention, false, "");
+                        boolean involvesMe, String fullText, long time, boolean unread) {
+        long id() {
+            return extractMessageId(url);
         }
     }
 
@@ -41,8 +44,7 @@ public class ZulipChat {
                 List<ZulipMessage> mentions = fetchMessages(server,
                         "[{\"operator\":\"is\",\"operand\":\"mentioned\"},{\"operator\":\"is\",\"operand\":\"unread\"}]");
                 allMessages.addAll(mentions.stream()
-                        .map(m -> new ZulipMessage(m.server(), m.stream(), m.topic(), m.sender(), m.content(), m.url(), true,
-                                true, m.fullText()))
+                        .map(ZulipChat::asMention)
                         .toList());
 
                 Set<Long> mentionIds = new HashSet<>();
@@ -95,6 +97,34 @@ public class ZulipChat {
         }
 
         return new FetchResult(allMessages, watchMessageIds);
+    }
+
+    /**
+     * Everything sent in your streams and DMs in the last {@code hours}, read or not, newest {@value #MAX_RECENT}
+     * per server; plus older unread mentions. Marks nothing read.
+     */
+    static List<ZulipMessage> fetchRecent(Config config, int hours) {
+        long since = System.currentTimeMillis() / 1000 - hours * 3600L;
+        List<ZulipMessage> out = new ArrayList<>();
+        for (Config.ZulipServer server : config.getZulipServers()) {
+            Set<Long> seen = new HashSet<>();
+            for (ZulipMessage m : fetchMessages(server,
+                    "[{\"operator\":\"is\",\"operand\":\"mentioned\"},{\"operator\":\"is\",\"operand\":\"unread\"}]")) {
+                if (seen.add(m.id())) out.add(asMention(m));
+            }
+            for (ZulipMessage m : fetchMessages(server, "[]", MAX_RECENT)) {
+                if (m.time() >= since && seen.add(m.id())) out.add(m);
+            }
+        }
+        out.sort(Comparator.comparingLong(ZulipMessage::time));
+        return out;
+    }
+
+    static final int MAX_RECENT = 400;
+
+    private static ZulipMessage asMention(ZulipMessage m) {
+        return new ZulipMessage(m.server(), m.stream(), m.topic(), m.sender(), m.content(), m.url(), true, true,
+                m.fullText(), m.time(), m.unread());
     }
 
     private static boolean all(List<String> watches) {
@@ -171,6 +201,10 @@ public class ZulipChat {
     }
 
     private static List<ZulipMessage> fetchMessages(Config.ZulipServer server, String narrow) {
+        return fetchMessages(server, narrow, MAX_MESSAGES);
+    }
+
+    private static List<ZulipMessage> fetchMessages(Config.ZulipServer server, String narrow, int max) {
         try (HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build()) {
@@ -180,7 +214,7 @@ public class ZulipChat {
 
             String encodedNarrow = URLEncoder.encode(narrow, StandardCharsets.UTF_8);
             String url = baseUrl + "/api/v1/messages?narrow=" + encodedNarrow
-                    + "&anchor=newest&num_before=" + MAX_MESSAGES + "&num_after=0"
+                    + "&anchor=newest&num_before=" + max + "&num_after=0"
                     + "&apply_markdown=false";
 
             String auth = Base64.getEncoder().encodeToString(
@@ -230,7 +264,7 @@ public class ZulipChat {
                 String messageUrl = buildMessageUrl(baseUrl, stream, topic, messageId);
 
                 result.add(new ZulipMessage(server.url(), stream, topic, sender, content, messageUrl, false,
-                        personal, fullText));
+                        personal, fullText, msg.path("timestamp").asLong(), !flags.contains("read")));
             }
             return result;
         } catch (Exception e) {

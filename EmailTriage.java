@@ -35,7 +35,8 @@ public class EmailTriage {
 
     record Decision(String decision, String reason) {}
 
-    record TriageResult(String subject, String from, String decision, String reason) {}
+    /** @param messageId the Message-ID header, so a reader can find the email (Gmail: rfc822msgid:) */
+    record TriageResult(String subject, String from, String decision, String reason, String messageId) {}
 
     // ── Fetch unread emails via IMAP ──
 
@@ -396,7 +397,7 @@ public class EmailTriage {
                     "KEEP_UNREAD", "classification unavailable, keeping safe"));
 
             accountResults.add(new TriageResult(
-                    em.subject(), em.from(), decision.decision(), decision.reason()));
+                    em.subject(), em.from(), decision.decision(), decision.reason(), em.messageId()));
 
             if ("MARK_READ".equals(decision.decision())) {
                 markReadUids.add(em.uid());

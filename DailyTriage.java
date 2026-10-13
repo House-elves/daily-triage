@@ -7,6 +7,7 @@
 //SOURCES CalendarFeed.java
 //SOURCES GitHubIssues.java
 //SOURCES ZulipChat.java
+//SOURCES ZulipDigest.java
 //SOURCES BriefingGenerator.java
 //SOURCES Notifier.java
 
@@ -47,6 +48,17 @@ public class DailyTriage implements Callable<Integer> {
     @Option(names = "--briefing-only", description = "Run morning briefing only, skip email triage")
     boolean briefingOnly;
 
+    @Option(names = "--no-email", description = "Don't email the triage summary or briefing; the run is only saved "
+            + "(for Elf Desk, which shows it). Emails and Zulip messages are still marked read as usual.")
+    boolean noEmail;
+
+    @Option(names = "--zulip-only", description = "Fetch recent Zulip messages (see --zulip-hours) and unread mentions, "
+            + "digest them per topic and save the run. Marks nothing read and sends nothing.")
+    boolean zulipOnly;
+
+    @Option(names = "--zulip-hours", defaultValue = "24", description = "How far back --zulip-only looks (default: ${DEFAULT-VALUE})")
+    int zulipHours;
+
     private static final int RETRY_DELAY_MINUTES = 60;
     private static final int MAX_RETRIES = 2;
 
@@ -60,7 +72,8 @@ public class DailyTriage implements Callable<Integer> {
         }
 
         Config config = Config.load();
-        config.validate(!dryRun && !briefingOnly);
+        if (zulipOnly) return zulipRun(config, startTime);
+        config.validate(!dryRun && !briefingOnly && !noEmail);
 
         List<Config.GmailAccount> accounts = config.getGmailAccounts();
         if (accounts.isEmpty() && !briefingOnly) {
@@ -73,6 +86,7 @@ public class DailyTriage implements Callable<Integer> {
         runData.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         runData.put("mode", mode);
         runData.put("dryRun", dryRun);
+        runData.put("emailed", !dryRun && !noEmail);
         String status = "success";
 
         // Phase 1: Email triage
@@ -97,6 +111,7 @@ public class DailyTriage implements Callable<Integer> {
                     d.put("from", r.from());
                     d.put("decision", r.decision());
                     d.put("reason", r.reason());
+                    d.put("messageId", r.messageId());
                     decisions.add(d);
                 }
                 accountData.put("decisions", decisions);
@@ -107,7 +122,7 @@ public class DailyTriage implements Callable<Integer> {
                 }
             }
 
-            if (!triageResults.isEmpty() && !dryRun) {
+            if (!triageResults.isEmpty() && !dryRun && !noEmail) {
                 System.out.println("\nSending triage summary...");
                 try {
                     Notifier notifier = new Notifier(config);
@@ -155,13 +170,13 @@ public class DailyTriage implements Callable<Integer> {
             briefingData.put("calendarEvents", calendarEvents.size());
             briefingData.put("githubIssues", githubIssues.size());
             briefingData.put("zulipMessages", zulipResult.messages().size());
+            runData.put("zulip", zulipData(zulipResult, Map.of(), !dryRun));
 
             System.out.println("  Generating briefing...");
             briefingHtml = BriefingGenerator.generate(config, calendarEvents, githubIssues, attentionEmails, zulipResult.messages());
 
             if (briefingHtml != null && !dryRun) {
-                Notifier notifier = new Notifier(config);
-                notifier.sendBriefing(briefingHtml);
+                if (!noEmail) new Notifier(config).sendBriefing(briefingHtml);
                 ZulipChat.markAsRead(zulipResult.watchMessageIds());
                 briefingData.put("generated", true);
             } else if (briefingHtml != null) {
@@ -188,6 +203,61 @@ public class DailyTriage implements Callable<Integer> {
 
         System.out.println("\nDone!");
         return 0;
+    }
+
+    /** A Zulip-only run: recent messages and a digest per topic, saved for Elf Desk. Nothing is marked read. */
+    private int zulipRun(Config config, long startTime) {
+        if (config.getZulipServers().isEmpty()) {
+            System.err.println("No Zulip servers configured.");
+            return 1;
+        }
+        System.out.println("Fetching Zulip messages...");
+        List<ZulipChat.ZulipMessage> messages = ZulipChat.fetchRecent(config, zulipHours);
+        System.out.println("  Found " + messages.size() + " Zulip messages from the last " + zulipHours + " hours. Digesting...");
+        Map<String, String> digests = ZulipDigest.generate(messages);
+
+        Map<String, Object> runData = new LinkedHashMap<>();
+        runData.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        runData.put("mode", "zulip");
+        runData.put("dryRun", dryRun);
+        runData.put("zulipHours", zulipHours);
+        runData.put("zulip", zulipData(new ZulipChat.FetchResult(messages, Map.of()), digests, false));
+        runData.put("durationMs", System.currentTimeMillis() - startTime);
+        runData.put("status", "success");
+        saveRunHistory(runData, null);
+        System.out.println("\nDone!");
+        return 0;
+    }
+
+    /**
+     * The Zulip messages of a run, for Elf Desk's Zulip tab.
+     *
+     * @param markRead whether the briefing marks the watched ones read afterwards (they're flagged so)
+     */
+    private static Map<String, Object> zulipData(ZulipChat.FetchResult result, Map<String, String> digests,
+            boolean markRead) {
+        Set<Long> marked = new HashSet<>();
+        if (markRead) result.watchMessageIds().values().forEach(marked::addAll);
+        List<Map<String, Object>> messages = new ArrayList<>();
+        for (ZulipChat.ZulipMessage m : result.messages()) {
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("server", m.server());
+            d.put("stream", m.stream());
+            d.put("topic", m.topic());
+            d.put("sender", m.sender());
+            d.put("content", m.content());
+            d.put("url", m.url());
+            d.put("time", m.time());
+            d.put("mention", m.isMention());
+            d.put("involvesMe", m.involvesMe());
+            d.put("unread", m.unread());
+            d.put("markedRead", marked.contains(m.id()));
+            messages.add(d);
+        }
+        Map<String, Object> zulip = new LinkedHashMap<>();
+        zulip.put("messages", messages);
+        zulip.put("digests", digests);
+        return zulip;
     }
 
     private void saveRunHistory(Map<String, Object> runData, String briefingHtml) {

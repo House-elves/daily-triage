@@ -61,7 +61,17 @@ daily-triage --triage-only
 
 # Briefing only — skip email triage
 daily-triage --briefing-only
+
+# Save the run without emailing it (Elf Desk runs it this way and shows it)
+daily-triage --no-email
+
+# The last 24 hours of Zulip, digested per topic; marks nothing read
+daily-triage --zulip-only [--zulip-hours 24]
 ```
+
+## Elf Desk
+
+[Elf Desk](../elf-desk) can run this elf instead of the timer: its **Email** tab runs `daily-triage --triage-only --no-email` and shows the email triage, and its **Zulip** tab runs `daily-triage --zulip-only` (its **GitHub** tab covers what the briefing's GitHub section did). The desk's runner starts each as a systemd unit (`daily-triage-desk-email`, `daily-triage-desk-zulip`), and the desk reads the saved runs from `~/.config/daily-triage/runs/`. Each run's JSON keeps the triage decisions (with each email's Message-ID) and the Zulip messages it covered.
 
 ## Configuration
 
