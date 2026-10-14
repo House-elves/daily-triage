@@ -63,6 +63,19 @@ public class DailyTriage implements Callable<Integer> {
     @Option(names = "--message-id", paramLabel = "ID", description = "With --mark-read: a Message-ID whose thread to mark read (repeatable)")
     List<String> messageIds = new ArrayList<>();
 
+    @Option(names = "--zulip-read", paramLabel = "SERVER", description = "Mark Zulip messages read on this server (one of "
+            + "the configured ones): the unread of --stream/--topic, and/or each --zulip-message. Then exit. For Elf Desk's Done.")
+    String zulipReadServer;
+
+    @Option(names = "--stream", description = "With --zulip-read: the stream of --topic")
+    String zulipStream;
+
+    @Option(names = "--topic", description = "With --zulip-read: the topic whose unread messages to mark read")
+    String zulipTopic;
+
+    @Option(names = "--zulip-message", paramLabel = "ID", description = "With --zulip-read: a message id to mark read (repeatable)")
+    List<Long> zulipMessages = new ArrayList<>();
+
     @Option(names = "--zulip-hours", defaultValue = "24", description = "How far back --zulip-only looks (default: ${DEFAULT-VALUE})")
     int zulipHours;
 
@@ -80,6 +93,7 @@ public class DailyTriage implements Callable<Integer> {
 
         Config config = Config.load();
         if (markReadAccount != null) return markRead(config);
+        if (zulipReadServer != null) return zulipRead(config);
         if (zulipOnly) return zulipRun(config, startTime);
         config.validate(!dryRun && !briefingOnly && !noEmail);
 
@@ -235,6 +249,30 @@ public class DailyTriage implements Callable<Integer> {
         }
         System.out.println("{\"marked\": " + marked + "}");
         return 0;
+    }
+
+    /** --zulip-read: a topic's unread messages and/or the given ones marked read, one JSON line of how many. */
+    private int zulipRead(Config config) {
+        Config.ZulipServer server = config.getZulipServers().stream()
+                .filter(s -> s.url().replaceFirst("^https://", "").replaceAll("/+$", "")
+                        .equalsIgnoreCase(zulipReadServer.replaceFirst("^https://", "").replaceAll("/+$", "")))
+                .findFirst().orElse(null);
+        if (server == null) {
+            System.err.println("Not a configured Zulip server: " + zulipReadServer);
+            return 2;
+        }
+        if ((zulipStream == null) != (zulipTopic == null) || (zulipStream == null && zulipMessages.isEmpty())) {
+            System.err.println("--zulip-read needs --stream with --topic, and/or --zulip-message");
+            return 2;
+        }
+        try {
+            int marked = ZulipChat.markRead(server, zulipStream, zulipTopic, zulipMessages);
+            System.out.println("{\"marked\": " + marked + "}");
+            return 0;
+        } catch (Exception e) {
+            System.err.println("Couldn't mark it read: " + e.getMessage());
+            return 1;
+        }
     }
 
     private int zulipRun(Config config, long startTime) {

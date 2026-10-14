@@ -1,6 +1,7 @@
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -198,6 +199,45 @@ public class ZulipChat {
                         + ": " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * Marks read the unread messages of a stream's topic (when {@code stream} is set) plus the given message ids.
+     * The topic is matched as Zulip does (case-insensitively); its unread messages are looked up first, so messages
+     * that arrived since the run are included.
+     *
+     * @return how many messages were asked to be marked read
+     */
+    static int markRead(Config.ZulipServer server, String stream, String topic, List<Long> messageIds) throws Exception {
+        Set<Long> ids = new LinkedHashSet<>(messageIds);
+        if (stream != null) {
+            String narrow = MAPPER.writeValueAsString(List.of(
+                    Map.of("operator", "stream", "operand", stream),
+                    Map.of("operator", "topic", "operand", topic),
+                    Map.of("operator", "is", "operand", "unread")));
+            List<ZulipMessage> unread = fetchMessages(server, narrow, 1000);
+            for (ZulipMessage m : unread) {
+                long id = extractMessageId(m.url());
+                if (id > 0) ids.add(id);
+            }
+        }
+        if (ids.isEmpty()) return 0;
+        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
+            String baseUrl = (server.url().startsWith("https://") ? server.url() : "https://" + server.url()).replaceAll("/+$", "");
+            String auth = Base64.getEncoder().encodeToString(
+                    (server.email() + ":" + server.apiKey()).getBytes(StandardCharsets.UTF_8));
+            String body = "messages=" + URLEncoder.encode(MAPPER.writeValueAsString(ids), StandardCharsets.UTF_8)
+                    + "&op=add&flag=read";
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/api/v1/messages/flags"))
+                    .header("Authorization", "Basic " + auth)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) throw new IOException("Zulip answered HTTP " + response.statusCode());
+        }
+        return ids.size();
     }
 
     private static List<ZulipMessage> fetchMessages(Config.ZulipServer server, String narrow) {
