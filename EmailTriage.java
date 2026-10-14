@@ -351,6 +351,67 @@ public class EmailTriage {
         }
     }
 
+    /** A Message-ID as Gmail's rfc822msgid: search takes it: no brackets, nothing that could break the IMAP command. */
+    static final Pattern MESSAGE_ID = Pattern.compile("[^\\s\"\\\\<>()]{1,500}");
+
+    /**
+     * Marks the INBOX thread of this message read (every unread message in it, as the triage lists a thread by its
+     * first unread message). Gmail finds the message by its Message-ID and the thread by X-GM-THRID.
+     *
+     * @return how many messages were marked read (0: it isn't in the INBOX, or the thread was already read)
+     */
+    static int markThreadRead(Config.GmailAccount account, String messageId) throws Exception {
+        String id = messageId == null ? "" : messageId.strip().replaceAll("^<|>$", "");
+        if (!MESSAGE_ID.matcher(id).matches()) throw new IllegalArgumentException("Not a Message-ID: " + messageId);
+        Properties props = new Properties();
+        props.put("mail.store.protocol", "imaps");
+        props.put("mail.imaps.host", "imap.gmail.com");
+        props.put("mail.imaps.port", "993");
+        Store store = Session.getInstance(props).getStore("imaps");
+        store.connect("imap.gmail.com", account.email(), account.password());
+        try {
+            Folder inbox = store.getFolder("INBOX");
+            inbox.open(Folder.READ_WRITE);
+            try {
+                var imap = (org.eclipse.angus.mail.imap.IMAPFolder) inbox;
+                return (Integer) imap.doCommand(p -> {
+                    List<Long> found = uidSearch(p, "X-GM-RAW \"rfc822msgid:" + id + "\"");
+                    if (found.isEmpty()) return 0;
+                    String thread = null;
+                    for (var r : p.command("UID FETCH " + found.get(0) + " (X-GM-THRID)", null)) {
+                        Matcher m = THRID.matcher(r.toString());
+                        if (m.find()) thread = m.group(1);
+                    }
+                    List<Long> unread = thread == null ? found : uidSearch(p, "X-GM-THRID " + thread + " UNSEEN");
+                    if (unread.isEmpty()) return 0;
+                    String set = unread.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+                    p.simpleCommand("UID STORE " + set + " +FLAGS.SILENT (\\Seen)", null);
+                    return unread.size();
+                });
+            } finally {
+                inbox.close(false);
+            }
+        } finally {
+            store.close();
+        }
+    }
+
+    private static final Pattern THRID = Pattern.compile("X-GM-THRID (\\d+)");
+
+    private static List<Long> uidSearch(org.eclipse.angus.mail.imap.protocol.IMAPProtocol p, String criteria)
+            throws org.eclipse.angus.mail.iap.ProtocolException {
+        var responses = p.command("UID SEARCH " + criteria, null);
+        var last = responses[responses.length - 1];
+        if (!last.isOK()) throw new org.eclipse.angus.mail.iap.ProtocolException("Search failed: " + last);
+        List<Long> uids = new ArrayList<>();
+        for (var r : responses) {
+            if (r instanceof org.eclipse.angus.mail.imap.protocol.IMAPResponse ir && ir.keyEquals("SEARCH")) {
+                for (long n; (n = ir.readLong()) != -1; ) uids.add(n);
+            }
+        }
+        return uids;
+    }
+
     // ── Process a single account ──
 
     record AccountResult(List<TriageResult> results, List<String> markReadUids) {}

@@ -56,6 +56,13 @@ public class DailyTriage implements Callable<Integer> {
             + "digest them per topic and save the run. Marks nothing read and sends nothing.")
     boolean zulipOnly;
 
+    @Option(names = "--mark-read", paramLabel = "ACCOUNT", description = "Mark the threads of --message-id read in this "
+            + "Gmail account (one of the configured ones), then exit. For Elf Desk's Done button.")
+    String markReadAccount;
+
+    @Option(names = "--message-id", paramLabel = "ID", description = "With --mark-read: a Message-ID whose thread to mark read (repeatable)")
+    List<String> messageIds = new ArrayList<>();
+
     @Option(names = "--zulip-hours", defaultValue = "24", description = "How far back --zulip-only looks (default: ${DEFAULT-VALUE})")
     int zulipHours;
 
@@ -72,6 +79,7 @@ public class DailyTriage implements Callable<Integer> {
         }
 
         Config config = Config.load();
+        if (markReadAccount != null) return markRead(config);
         if (zulipOnly) return zulipRun(config, startTime);
         config.validate(!dryRun && !briefingOnly && !noEmail);
 
@@ -206,6 +214,29 @@ public class DailyTriage implements Callable<Integer> {
     }
 
     /** A Zulip-only run: recent messages and a digest per topic, saved for Elf Desk. Nothing is marked read. */
+    /** --mark-read: each message's thread marked read, one JSON line of what was marked. */
+    private int markRead(Config config) {
+        Config.GmailAccount account = config.getGmailAccounts().stream()
+                .filter(a -> a.email().equalsIgnoreCase(markReadAccount)).findFirst().orElse(null);
+        if (account == null) {
+            System.err.println("Not a configured Gmail account: " + markReadAccount);
+            return 2;
+        }
+        if (messageIds.isEmpty()) {
+            System.err.println("--mark-read needs at least one --message-id");
+            return 2;
+        }
+        int marked = 0;
+        try {
+            for (String id : messageIds) marked += EmailTriage.markThreadRead(account, id);
+        } catch (Exception e) {
+            System.err.println("Couldn't mark it read: " + e.getMessage());
+            return 1;
+        }
+        System.out.println("{\"marked\": " + marked + "}");
+        return 0;
+    }
+
     private int zulipRun(Config config, long startTime) {
         if (config.getZulipServers().isEmpty()) {
             System.err.println("No Zulip servers configured.");
