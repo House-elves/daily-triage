@@ -352,7 +352,8 @@ public class EmailTriage {
     }
 
     /** A Message-ID as Gmail's rfc822msgid: search takes it: no brackets, nothing that could break the IMAP command. */
-    static final Pattern MESSAGE_ID = Pattern.compile("[\\x21-\\x7E&&[^\"\\\\<>()]]{1,500}"); // printable ASCII only
+    // Printable ASCII only, never starting with "-"
+    static final Pattern MESSAGE_ID = Pattern.compile("[\\x21-\\x7E&&[^-\"\\\\<>()]][\\x21-\\x7E&&[^\"\\\\<>()]]{0,499}");
 
     /**
      * Marks the INBOX thread of this message read (every unread message in it, as the triage lists a thread by its
