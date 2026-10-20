@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/House-elves/elf-desk/main/docs/brand/mark.svg" width="72" alt="House Elves logo: a checkmark that ends in an elf's hat">
+
 # daily-triage
 
 A House Elf that triages your email inbox and sends a morning briefing using [Claude Code](https://claude.com/claude-code).
