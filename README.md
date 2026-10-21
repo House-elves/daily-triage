@@ -2,6 +2,8 @@
 
 # daily-triage
 
+> **This elf has moved.** It's now two elves, each with its own tab on Elf Desk: [mail-triage](https://github.com/House-elves/mail-triage) (**Mail**) and [zulip-digest](https://github.com/House-elves/zulip-digest) (**Zulip**). They send no briefing email: the desk's dashboard is where you see it. This repo is archived.
+
 A House Elf that triages your email inbox and sends a morning briefing using [Claude Code](https://claude.com/claude-code).
 
 Runs in two phases every morning:
