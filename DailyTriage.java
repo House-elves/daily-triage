@@ -76,6 +76,11 @@ public class DailyTriage implements Callable<Integer> {
     @Option(names = "--zulip-message", paramLabel = "ID", description = "With --zulip-read: a message id to mark read (repeatable)")
     List<Long> zulipMessages = new ArrayList<>();
 
+    @Option(names = "--action", paramLabel = "NAME", description = "For Elf Desk's tabs: email-done (stdin: {account, "
+            + "messageId}) or zulip-done (stdin: {server, stream, topic, messages}). Marks it read and records it as done "
+            + "in ~/.config/daily-triage/done. Prints one JSON line.")
+    String action;
+
     @Option(names = "--zulip-hours", defaultValue = "24", description = "How far back --zulip-only looks (default: ${DEFAULT-VALUE})")
     int zulipHours;
 
@@ -92,6 +97,7 @@ public class DailyTriage implements Callable<Integer> {
         }
 
         Config config = Config.load();
+        if (action != null) return action(config);
         if (markReadAccount != null) return markRead(config);
         if (zulipReadServer != null) return zulipRead(config);
         if (zulipOnly) return zulipRun(config, startTime);
@@ -225,6 +231,74 @@ public class DailyTriage implements Callable<Integer> {
 
         System.out.println("\nDone!");
         return 0;
+    }
+
+    static final java.nio.file.Path DONE = Config.CONFIG_DIR.resolve("done");
+    static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * --action: Done on the desk's Email or Zulip tab, its values as JSON on stdin (the runner checked them against
+     * elf.yaml). Marks it read like --mark-read and --zulip-read, then records when, for the tab to list it as done.
+     */
+    private int action(Config config) {
+        com.fasterxml.jackson.databind.JsonNode in;
+        try {
+            in = JSON.readTree(System.in);
+        } catch (Exception e) {
+            System.err.println("Can't read what to do: " + e.getMessage());
+            return 2;
+        }
+        int code;
+        switch (action) {
+            case "email-done" -> {
+                markReadAccount = in.path("account").asText("");
+                messageIds = List.of(in.path("messageId").asText(""));
+                code = markRead(config);
+                if (code == 0) code = recordDone("email", markReadAccount, in.path("messageId").asText(""));
+            }
+            case "zulip-done" -> {
+                zulipReadServer = in.path("server").asText("");
+                String stream = in.path("stream").asText(""), topic = in.path("topic").asText("");
+                // Direct messages are one "topic" on the tab: they're marked read by id.
+                if (!stream.equals("DM")) {
+                    zulipStream = stream;
+                    zulipTopic = topic;
+                }
+                in.path("messages").forEach(m -> zulipMessages.add(m.asLong()));
+                code = zulipRead(config);
+                if (code == 0) code = recordDone("zulip", zulipReadServer, stream + " > " + topic);
+            }
+            default -> {
+                System.err.println("Not an action: " + action);
+                code = 2;
+            }
+        }
+        return code;
+    }
+
+    /** done/<kind>.json: {group: {key: when}}, a month of it. */
+    private static int recordDone(String kind, String group, String key) {
+        java.nio.file.Path file = DONE.resolve(kind + ".json");
+        try {
+            java.nio.file.Files.createDirectories(DONE);
+            var all = java.nio.file.Files.exists(file)
+                    ? (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(file.toFile()) : JSON.createObjectNode();
+            String monthAgo = java.time.Instant.now().minus(java.time.Duration.ofDays(31)).toString();
+            all.fields().forEachRemaining(g -> {
+                if (g.getValue() instanceof com.fasterxml.jackson.databind.node.ObjectNode o) {
+                    o.properties().removeIf(e -> e.getValue().asText().compareTo(monthAgo) < 0);
+                }
+            });
+            all.withObject(group).put(key, java.time.Instant.now().toString());
+            java.nio.file.Path tmp = file.resolveSibling(kind + ".json.new");
+            java.nio.file.Files.writeString(tmp, JSON.writeValueAsString(all));
+            java.nio.file.Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            return 0;
+        } catch (Exception e) {
+            System.err.println("Marked read, but couldn't note it as done: " + e.getMessage());
+            return 1;
+        }
     }
 
     /** A Zulip-only run: recent messages and a digest per topic, saved for Elf Desk. Nothing is marked read. */

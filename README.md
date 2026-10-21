@@ -75,7 +75,9 @@ daily-triage --zulip-only [--zulip-hours 24]
 
 ## Elf Desk
 
-[Elf Desk](../elf-desk) can run this elf instead of the timer: its **Email** tab runs `daily-triage --triage-only --no-email` and shows the email triage, and its **Zulip** tab runs `daily-triage --zulip-only` (its **GitHub** tab covers what the briefing's GitHub section did). The desk's runner starts each as a systemd unit (`daily-triage-desk-email`, `daily-triage-desk-zulip`), and the desk reads the saved runs from `~/.config/daily-triage/runs/`. Each run's JSON keeps the triage decisions (with each email's Message-ID) and the Zulip messages it covered.
+This elf brings two tabs to [Elf Desk](https://github.com/House-elves/elf-desk), with a card each on its dashboard: **Email** and **Zulip**, drawn by [`ui/`](ui) in the desk's sandboxed frame. **Triage email now** runs `daily-triage --triage-only --no-email`, **Check Zulip now** runs `daily-triage --zulip-only`, and the dashboard's Refresh everything runs both. The tabs read the saved runs in `~/.config/daily-triage/runs/` (each keeps the triage decisions, with each email's Message-ID, and the Zulip messages it covered).
+
+**Done** on an email or a topic runs `daily-triage --action=email-done` or `--action=zulip-done` with the values on stdin: it marks the thread or topic read and records when in `~/.config/daily-triage/done/`, so the tab lists it as done (a topic comes back when it has newer messages). These two don't ask first (`ask: false` in [`elf.yaml`](elf.yaml)); they only mark things read.
 
 ## Configuration
 

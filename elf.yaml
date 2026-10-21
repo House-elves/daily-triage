@@ -65,3 +65,37 @@ commands:
     args: [--triage-only, --no-email, --dry-run]
 
 dry-run: dry-run
+
+# Its Email and Zulip tabs on the desk (and their dashboard cards), drawn by ui/ in the desk's sandboxed frame. They
+# read only the runs it saved and what you marked done, and ask the desk for Done. Refresh everything runs both.
+data: [runs, done]
+tabs:
+  - name: email
+    label: Email
+    page: ui/email.js
+    card: true
+    refresh: email
+  - name: zulip
+    label: Zulip
+    page: ui/zulip.js
+    card: true
+    refresh: zulip
+
+actions:
+  email-done:
+    label: Mark an email's thread read in Gmail
+    args: [--action=email-done]
+    ask: false
+    params:
+      account: {kind: email}
+      # A Message-ID: printable, never starting with "-", nothing that could break the IMAP search.
+      messageId: {pattern: "<?[\\x21-\\x7E&&[^-\"\\\\<>()]][\\x21-\\x7E&&[^\"\\\\<>()]]{0,499}>?", max: 502}
+  zulip-done:
+    label: Mark a Zulip topic read
+    args: [--action=zulip-done]
+    ask: false
+    params:
+      server: {pattern: "[A-Za-z0-9][A-Za-z0-9.-]{0,252}"}
+      stream: {pattern: "\\P{Cntrl}{1,200}"}
+      topic: {pattern: "\\P{Cntrl}{0,200}"}
+      messages: {kind: ints, max: 500}
