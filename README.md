@@ -22,6 +22,8 @@ Threads another elf already owns skip Claude and are marked read directly. Today
 
 ## Install
 
+The easy way: install it from [Elf Desk](https://github.com/House-elves/elf-desk)'s **Elves** page. The desk reads [`elf.yaml`](elf.yaml), asks for the settings and runs it from the Email and Zulip tabs. The steps below set it up by hand, without the desk.
+
 ### Quick install (via JBang)
 
 ```bash

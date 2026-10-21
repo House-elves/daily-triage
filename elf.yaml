@@ -1,0 +1,67 @@
+# A House Elves elf: what Elf Desk needs to install, set up and run daily-triage.
+name: daily-triage
+description: Sorts your unread Gmail and sums up your Zulip streams, for the desk's Email and Zulip tabs.
+main: DailyTriage.java
+config: ~/.config/daily-triage/config
+tools: [claude]
+
+reads:
+  - Your unread Gmail inbox, over IMAP with an app password.
+  - Your Zulip streams of the last day, with your API key.
+writes:
+  - Marks emails and Zulip topics read, only when you click Done.
+  - Labels emails the triage finds noise with your noise label.
+
+settings:
+  - key: GMAIL_ADDRESS
+    label: Gmail account
+    help: The inbox the email triage reads.
+    kind: email
+  - key: GMAIL_APP_PASSWORD
+    label: Gmail app password
+    help: From myaccount.google.com/apppasswords.
+    kind: secret
+    goes-with: [GMAIL_ADDRESS]
+  - key: MAX_EMAILS
+    label: Emails per triage
+    help: The most unread emails one triage looks at.
+    kind: int
+    min: 1
+    max: 500
+    default: "50"
+  - key: TRIAGE_LABEL
+    label: Label for noise
+    help: The Gmail label for what the triage marks read.
+    kind: words
+    default: non-actionable
+  - key: ZULIP_SERVER_1
+    label: Zulip server
+    help: For example quarkusio.zulipchat.com.
+    kind: host
+  - key: ZULIP_EMAIL_1
+    label: Zulip account
+    help: The email you sign in to Zulip with.
+    kind: email
+  - key: ZULIP_API_KEY_1
+    label: Zulip API key
+    help: From Zulip, Personal settings, Account and privacy, API key.
+    kind: secret
+    goes-with: [ZULIP_SERVER_1, ZULIP_EMAIL_1]
+  - key: ZULIP_WATCH_1
+    label: Streams to read
+    help: Comma-separated stream names, or * for all your streams.
+    kind: words
+    default: "*"
+
+commands:
+  email:
+    label: Triage the inbox
+    args: [--triage-only, --no-email]
+  zulip:
+    label: Sum up Zulip
+    args: [--zulip-only]
+  dry-run:
+    label: Triage without marking anything
+    args: [--triage-only, --no-email, --dry-run]
+
+dry-run: dry-run
